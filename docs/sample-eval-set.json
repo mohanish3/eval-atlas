@@ -1,0 +1,222 @@
+[
+  {
+    "id": "pm_001",
+    "question": "What is the primary purpose of a Product Requirements Document (PRD)?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "To define the budget and timeline for a project",
+      "B": "To describe what a product should do and why, so engineering and design can build it",
+      "C": "To document bugs found during QA testing",
+      "D": "To track sales performance of a launched product"
+    },
+    "correct_answer": "B",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_002",
+    "question": "Which framework is most useful for prioritising features when stakeholder requests exceed team capacity?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "SWOT analysis",
+      "B": "RICE scoring (Reach, Impact, Confidence, Effort)",
+      "C": "RACI matrix",
+      "D": "OKR alignment review"
+    },
+    "correct_answer": "B",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_003",
+    "question": "A North Star Metric is best described as:",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "A metric that tracks monthly recurring revenue",
+      "B": "A single metric that captures the core value a product delivers to customers",
+      "C": "The number of daily active users divided by monthly active users",
+      "D": "A target set by the CEO for the fiscal year"
+    },
+    "correct_answer": "B",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_004",
+    "question": "In the context of product discovery, a 'jobs to be done' interview is designed to uncover:",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "Which features users prefer in competitor products",
+      "B": "The functional and emotional progress users are trying to make in their lives",
+      "C": "How many hours per week users spend in the product",
+      "D": "Whether users are willing to pay for a premium tier"
+    },
+    "correct_answer": "B",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_005",
+    "question": "What distinguishes an output from an outcome in product strategy?",
+    "type": "open_ended",
+    "correct_answer": "output",
+    "match_type": "contains",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_006",
+    "question": "Briefly explain what an MVP (Minimum Viable Product) is and why teams build one.",
+    "type": "open_ended",
+    "correct_answer": "learn",
+    "match_type": "contains",
+    "category": "product-management"
+  },
+  {
+    "id": "pm_007",
+    "question": "In a typical Agile Scrum team, who is responsible for maximising the value of the product and managing the Product Backlog?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "Scrum Master",
+      "B": "Engineering Lead",
+      "C": "Product Owner",
+      "D": "Stakeholder Sponsor"
+    },
+    "correct_answer": "C",
+    "category": "agile"
+  },
+  {
+    "id": "pm_008",
+    "question": "What is the purpose of a Sprint Retrospective?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "To plan the next sprint's backlog",
+      "B": "To demo completed work to stakeholders",
+      "C": "To inspect the past sprint and create a plan for improvements",
+      "D": "To estimate story points for upcoming features"
+    },
+    "correct_answer": "C",
+    "category": "agile"
+  },
+  {
+    "id": "pm_009",
+    "question": "In Agile, what is the difference between a user story and an acceptance criterion?",
+    "type": "open_ended",
+    "correct_answer": "acceptance criteria",
+    "match_type": "contains",
+    "category": "agile"
+  },
+  {
+    "id": "pm_010",
+    "question": "Which Agile principle best describes 'delivering working software frequently'?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "Principle 1: Customer satisfaction through early delivery",
+      "B": "Principle 3: Deliver working software frequently, from a couple of weeks to a couple of months",
+      "C": "Principle 6: Face-to-face conversation is the most efficient communication",
+      "D": "Principle 12: Reflect and adjust at regular intervals"
+    },
+    "correct_answer": "B",
+    "category": "agile"
+  },
+  {
+    "id": "pm_011",
+    "question": "What is 'velocity' in the context of a Scrum team?",
+    "type": "open_ended",
+    "correct_answer": "story points",
+    "match_type": "contains",
+    "category": "agile"
+  },
+  {
+    "id": "pm_012",
+    "question": "Which technique is used to estimate work in Agile when the team has low certainty?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "Gantt chart scheduling",
+      "B": "T-shirt sizing or Planning Poker",
+      "C": "Critical path method",
+      "D": "Earned value analysis"
+    },
+    "correct_answer": "B",
+    "category": "agile"
+  },
+  {
+    "id": "pm_013",
+    "question": "Explain what 'technical debt' means and give one reason a product team should care about it.",
+    "type": "open_ended",
+    "correct_answer": "technical debt",
+    "match_type": "contains",
+    "category": "agile"
+  },
+  {
+    "id": "pm_014",
+    "question": "If a team has 5 members and each member needs to be able to communicate with every other member, how many unique communication channels are there?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "5",
+      "B": "10",
+      "C": "15",
+      "D": "20"
+    },
+    "correct_answer": "B",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_015",
+    "question": "A product has 1,000 daily active users. 100 users churn per month and 150 new users join per month. After three months, approximately how many DAUs does the product have?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "850",
+      "B": "1,050",
+      "C": "1,150",
+      "D": "1,300"
+    },
+    "correct_answer": "C",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_016",
+    "question": "A PM has three tasks: A (2 hours, blocks B), B (1 hour, blocks C), C (3 hours). What is the minimum time to complete all three tasks?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "3 hours",
+      "B": "5 hours",
+      "C": "6 hours",
+      "D": "4 hours"
+    },
+    "correct_answer": "C",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_017",
+    "question": "Describe what 'second-order thinking' means and give a product example where ignoring it led to a bad outcome.",
+    "type": "open_ended",
+    "correct_answer": "consequence",
+    "match_type": "contains",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_018",
+    "question": "What is the Pareto Principle (80/20 rule) and how might a PM apply it to bug triage?",
+    "type": "open_ended",
+    "correct_answer": "80",
+    "match_type": "contains",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_019",
+    "question": "In decision-making, what is 'analysis paralysis' and what strategy can a PM use to overcome it?",
+    "type": "open_ended",
+    "correct_answer": "decision",
+    "match_type": "contains",
+    "category": "general-reasoning"
+  },
+  {
+    "id": "pm_020",
+    "question": "Which logical fallacy describes the tendency to favour information that confirms pre-existing beliefs?",
+    "type": "multiple_choice",
+    "choices": {
+      "A": "Sunk cost fallacy",
+      "B": "Confirmation bias",
+      "C": "Dunning-Kruger effect",
+      "D": "Availability heuristic"
+    },
+    "correct_answer": "B",
+    "category": "general-reasoning"
+  }
+]
