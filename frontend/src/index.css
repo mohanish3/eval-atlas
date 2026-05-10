@@ -1,0 +1,223 @@
+@import 'highlight.js/styles/github-dark.css';
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 228 30% 7%;
+    --foreground: 210 24% 92%;
+
+    --card: 228 24% 10%;
+    --card-foreground: 210 24% 92%;
+
+    --popover: 228 24% 10%;
+    --popover-foreground: 210 24% 92%;
+
+    --primary: 193 89% 61%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 18% 15%;
+    --secondary-foreground: 213 31% 91%;
+
+    --muted: 225 18% 14%;
+    --muted-foreground: 216 15% 65%;
+
+    --accent: 221 23% 17%;
+    --accent-foreground: 193 89% 72%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 17% 21%;
+    --input: 220 17% 21%;
+    --ring: 193 89% 61%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 228 30% 7%;
+    --foreground: 210 24% 92%;
+
+    --card: 228 24% 10%;
+    --card-foreground: 210 24% 92%;
+
+    --popover: 228 24% 10%;
+    --popover-foreground: 210 24% 92%;
+
+    --primary: 193 89% 61%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 18% 15%;
+    --secondary-foreground: 213 31% 91%;
+
+    --muted: 225 18% 14%;
+    --muted-foreground: 216 15% 65%;
+
+    --accent: 221 23% 17%;
+    --accent-foreground: 193 89% 72%;
+
+    --destructive: 0 72% 54%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 17% 21%;
+    --input: 220 17% 21%;
+    --ring: 193 89% 61%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Space Grotesk', sans-serif;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--foreground));
+  }
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-7px); }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes progress-glow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes check-pop {
+  0%   { transform: scale(0); opacity: 0; }
+  65%  { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.22s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3.2s ease-in-out infinite;
+}
+
+.animate-check-pop {
+  animation: check-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-spin-slow {
+  animation: spin 1s linear infinite;
+}
+
+/* Staggered children */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 280ms; }
+
+/* ─── Live Pulse ─────────────────────────────────────────────────────────── */
+
+.live-dot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.live-dot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.4);
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ─── Progress Bar ───────────────────────────────────────────────────────── */
+
+.progress-gradient {
+  background: linear-gradient(90deg, hsl(var(--primary)), hsl(239 84% 78%));
+  animation: progress-glow 2s ease-in-out infinite;
+}
+
+/* ─── Shimmer ────────────────────────────────────────────────────────────── */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--border)) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ─── Card shadow utilities ──────────────────────────────────────────────── */
+
+.shadow-card {
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.shadow-card-hover {
+  box-shadow: 0 28px 70px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}

@@ -1,0 +1,10 @@
+{
+  "name": "eval-atlas",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
+    "migrate": "npm --prefix backend run migrate",
+    "test": "npm --prefix backend test"
+  }
+}
