@@ -17,6 +17,15 @@ const STATUS_STYLES: Record<string, string> = {
   pending: 'border-amber-300/20 bg-amber-300/10 text-amber-100',
 };
 
+type EvalSetItem = {
+  id?: string;
+  question?: string;
+  type?: string;
+  choices?: Record<string, string>;
+  correct_answer?: string;
+  category?: string;
+};
+
 export default function EvalResults() {
   const { id: runId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -34,14 +43,6 @@ export default function EvalResults() {
   const [drilldownModelId, setDrilldownModelId] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
-  const hasLocalFallbackRun = Boolean(
-    runId &&
-    activeRun &&
-    activeRun.id === runId &&
-    activeRun.storage_mode === 'memory' &&
-    runtimeStatus.storageMode === 'memory'
-  );
-
   const isLive = activeRun?.status === 'running' || activeRun?.status === 'pending';
   useEvalStream(isLive && runId ? runId : null);
 
@@ -50,6 +51,13 @@ export default function EvalResults() {
     [results, runId]
   );
   const runtimeErrorCount = runResults.filter((result) => result.error_type === 'runtime_error').length;
+  const evalSetItems = useMemo(
+    () => Array.isArray(activeRun?.eval_set_data) ? activeRun.eval_set_data as EvalSetItem[] : [],
+    [activeRun]
+  );
+  const correctCount = runResults.filter((result) => result.is_correct === true).length;
+  const scoredCount = runResults.filter((result) => result.is_correct != null).length;
+  const overallAccuracy = scoredCount > 0 ? Math.round((correctCount / scoredCount) * 1000) / 10 : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -60,11 +68,6 @@ export default function EvalResults() {
 
     clearResults();
     setError(null);
-
-    if (hasLocalFallbackRun) {
-      setLoading(false);
-      return;
-    }
 
     setLoading(true);
     evalService.getRun(runId)
@@ -89,7 +92,7 @@ export default function EvalResults() {
     return () => {
       cancelled = true;
     };
-  }, [runId, hasLocalFallbackRun]);
+  }, [runId, clearResults, setActiveRun, setError, setLoading, setResults]);
 
   async function handleRetryErrors() {
     if (!runId) {
@@ -241,6 +244,75 @@ export default function EvalResults() {
             <RunProgress runId={activeRun.id} models={activeRun.models_config} totalQuestions={totalQuestions} />
           </section>
         )}
+
+        <section className="grid gap-4 md:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Questions</p>
+            <p className="mt-3 text-2xl font-bold text-slate-100">{totalQuestions}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Results</p>
+            <p className="mt-3 text-2xl font-bold text-slate-100">{runResults.length}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Correct</p>
+            <p className="mt-3 text-2xl font-bold text-slate-100">{correctCount}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Accuracy</p>
+            <p className="mt-3 text-2xl font-bold text-slate-100">{overallAccuracy != null ? `${overallAccuracy}%` : 'N/A'}</p>
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 shadow-card backdrop-blur-xl">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-100">Dataset</h2>
+              <p className="mt-1 text-xs text-slate-500">Exact eval rows used for this run.</p>
+            </div>
+            <div className="text-xs text-slate-500">{evalSetItems.length} row{evalSetItems.length !== 1 ? 's' : ''}</div>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-white/10">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-slate-950/50">
+                <tr className="text-left text-xs uppercase tracking-[0.2em] text-slate-500">
+                  <th className="p-3">Id</th>
+                  <th className="p-3">Question</th>
+                  <th className="p-3">Expected</th>
+                  <th className="p-3">Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evalSetItems.map((item, index) => (
+                  <tr key={`${item.id ?? 'row'}-${index}`} className="border-t border-white/10 align-top">
+                    <td className="p-3 text-slate-300">{item.id ?? `row-${index + 1}`}</td>
+                    <td className="p-3 text-slate-200">
+                      <div className="space-y-2">
+                        <div>{item.question ?? 'N/A'}</div>
+                        {item.type === 'multiple_choice' && item.choices ? (
+                          <div className="text-xs text-slate-500">
+                            {(['A', 'B', 'C', 'D'] as const)
+                              .filter((key) => item.choices?.[key])
+                              .map((key) => `${key}: ${item.choices?.[key]}`)
+                              .join(' | ')}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="p-3 text-slate-300">{item.correct_answer ?? 'N/A'}</td>
+                    <td className="p-3 text-slate-400">{item.category ?? 'N/A'}</td>
+                  </tr>
+                ))}
+                {evalSetItems.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-500">No dataset rows available for this run.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <section className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 shadow-card backdrop-blur-xl">
           <div className="mb-4 flex items-center justify-between gap-3">

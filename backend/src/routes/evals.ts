@@ -1,22 +1,39 @@
 import { Router, type Response } from 'express';
 import multer from 'multer';
+import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
-import { checkDatabaseConnection, getPool } from '../db/connection.js';
+import { checkDatabaseConnection, getPool, getReadPool, resolveDatabaseConfig } from '../db/connection.js';
 import { runEval, retryEvalErrors } from '../evals/runner.js';
-import {
-  addClient,
-  removeClient,
-} from '../evals/sseManager.js';
+import { addClient, removeClient } from '../evals/sseManager.js';
 import {
   createMemoryRun,
+  deleteMemoryEvalSet,
+  getMemoryEvalSet,
   deleteMemoryRuntimeErrors,
   getMemoryRun,
   getMemoryRunDetail,
+  listMemoryEvalSets,
   listMemoryRuntimeErrors,
   listMemoryRuns,
+  saveMemoryEvalSet,
 } from '../evals/fallbackStore.js';
-import { EvalItemArraySchema } from '../evals/evalSchema.js';
-import type { EvalItem, ModelSpec, RunConfig, EvalRun, EvalRunSummary, StorageMode } from '../shared/evalTypes.js';
+import {
+  AuthoredEvalItemArraySchema,
+  EvalItemArraySchema,
+  EvalSetGenerationRequestSchema,
+  EvalSetPayloadSchema,
+} from '../evals/evalSchema.js';
+import type {
+  AuthoredEvalItem,
+  EvalItem,
+  EvalRun,
+  EvalRunSummary,
+  EvalSet,
+  EvalSetSummary,
+  ModelSpec,
+  RunConfig,
+  StorageMode,
+} from '../shared/evalTypes.js';
 
 const router = Router();
 const upload = multer({
@@ -28,6 +45,29 @@ const upload = multer({
 });
 
 const AGENT_URL = process.env.AGENT_URL ?? 'http://localhost:3001';
+const AI_GENERATION_MODEL = process.env.EVAL_SET_GENERATION_MODEL ?? 'gpt-4o-mini';
+
+type EvalSetRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  default_system_prompt: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+type EvalSetItemRow = {
+  item_key: string;
+  question: string;
+  type: EvalItem['type'];
+  choices: Record<string, string> | null;
+  correct_answer: string;
+  match_type: EvalItem['match_type'] | null;
+  category: string | null;
+  origin: 'human' | 'ai_generated';
+  generation_context: AuthoredEvalItem['generation_context'] | null;
+};
 
 async function getStorageMode(): Promise<{ storageMode: StorageMode; databaseError?: string }> {
   const dbState = await checkDatabaseConnection();
@@ -35,6 +75,19 @@ async function getStorageMode(): Promise<{ storageMode: StorageMode; databaseErr
     storageMode: dbState.connected ? 'database' : 'memory',
     databaseError: dbState.error,
   };
+}
+
+function normalizeAuthoredItem(item: AuthoredEvalItem): AuthoredEvalItem {
+  return {
+    ...item,
+    origin: item.origin ?? 'human',
+    choices: item.type === 'multiple_choice' ? item.choices : undefined,
+    match_type: item.type === 'open_ended' ? (item.match_type ?? 'contains') : undefined,
+  };
+}
+
+function stripAuthoredMetadata(items: AuthoredEvalItem[]): EvalItem[] {
+  return items.map(({ origin: _origin, generation_context: _generationContext, ...item }) => item);
 }
 
 function parseEvalItems(fileBuffer: Buffer, body: Record<string, string>): EvalItem[] {
@@ -87,6 +140,18 @@ function parseEvalItems(fileBuffer: Buffer, body: Record<string, string>): EvalI
   return parsed.data;
 }
 
+function parseModelsConfig(raw: unknown): ModelSpec[] {
+  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('modelsConfig must be a non-empty ModelSpec[] array');
+  }
+
+  return parsed.map((entry) => ({
+    provider: String((entry as Record<string, unknown>).provider),
+    modelId: String((entry as Record<string, unknown>).modelId),
+  })) as ModelSpec[];
+}
+
 function buildRunConfig(
   runId: string,
   systemPrompt: string,
@@ -106,43 +171,500 @@ function buildRunConfig(
   };
 }
 
-router.post('/runs', upload.single('evalFile'), async (req, res) => {
+function mapEvalSetItem(row: EvalSetItemRow): AuthoredEvalItem {
+  return normalizeAuthoredItem({
+    id: row.item_key,
+    question: row.question,
+    type: row.type,
+    choices: row.choices ?? undefined,
+    correct_answer: row.correct_answer,
+    match_type: row.match_type ?? undefined,
+    category: row.category ?? undefined,
+    origin: row.origin,
+    generation_context: row.generation_context ?? undefined,
+  });
+}
+
+async function getEvalSetById(evalSetId: string): Promise<EvalSet | null> {
+  const readPool = getReadPool();
+  const setResult = await readPool.query<EvalSetRow>(
+    `SELECT id, name, description, default_system_prompt, tags, created_at, updated_at
+     FROM eval_sets
+     WHERE id = $1`,
+    [evalSetId]
+  );
+
+  if (setResult.rows.length === 0) {
+    return null;
+  }
+
+  const itemsResult = await readPool.query<EvalSetItemRow>(
+    `SELECT item_key, question, type, choices, correct_answer, match_type, category, origin, generation_context
+     FROM eval_set_items
+     WHERE eval_set_id = $1
+     ORDER BY sort_order ASC, created_at ASC`,
+    [evalSetId]
+  );
+
+  const row = setResult.rows[0];
+  return {
+    ...row,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    items: itemsResult.rows.map(mapEvalSetItem),
+  };
+}
+
+async function saveEvalSet(evalSetId: string | null, payload: {
+  name: string;
+  description: string | null;
+  default_system_prompt: string | null;
+  tags: string[];
+  items: AuthoredEvalItem[];
+}): Promise<EvalSet> {
+  const pool = getPool();
+  const client = await pool.connect();
+
   try {
-    const fileBuffer = req.file?.buffer;
-    if (!fileBuffer) {
-      return res.status(400).json({ error: 'evalFile is required (multipart/form-data field name: evalFile)' });
+    await client.query('BEGIN');
+
+    const resolvedId = evalSetId ?? uuidv4();
+    if (evalSetId) {
+      await client.query(
+        `UPDATE eval_sets
+         SET name = $2, description = $3, default_system_prompt = $4, tags = $5::jsonb, updated_at = NOW()
+         WHERE id = $1`,
+        [
+          resolvedId,
+          payload.name,
+          payload.description,
+          payload.default_system_prompt,
+          JSON.stringify(payload.tags),
+        ]
+      );
+      await client.query('DELETE FROM eval_set_items WHERE eval_set_id = $1', [resolvedId]);
+    } else {
+      await client.query(
+        `INSERT INTO eval_sets (id, name, description, default_system_prompt, tags)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          resolvedId,
+          payload.name,
+          payload.description,
+          payload.default_system_prompt,
+          JSON.stringify(payload.tags),
+        ]
+      );
     }
 
+    for (const [index, item] of payload.items.entries()) {
+      await client.query(
+        `INSERT INTO eval_set_items
+          (eval_set_id, item_key, question, type, choices, correct_answer, match_type, category, origin, generation_context, sort_order)
+         VALUES
+          ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb, $11)`,
+        [
+          resolvedId,
+          item.id,
+          item.question,
+          item.type,
+          JSON.stringify(item.type === 'multiple_choice' ? item.choices ?? null : null),
+          item.correct_answer,
+          item.type === 'open_ended' ? item.match_type ?? 'contains' : null,
+          item.category ?? null,
+          item.origin ?? 'human',
+          JSON.stringify(item.generation_context ?? null),
+          index,
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    const saved = await getEvalSetById(resolvedId);
+    if (!saved) {
+      throw new Error('Failed to reload saved eval set');
+    }
+    return saved;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function buildGeneratedChoice(seedText: string, label: string, variantIndex: number): string {
+  return `${seedText} ${label.toLowerCase()} variant ${variantIndex + 1}`;
+}
+
+function fallbackGenerateRows(
+  seeds: AuthoredEvalItem[],
+  count: number,
+  category?: string,
+  instructions?: string
+): AuthoredEvalItem[] {
+  const generatedAt = new Date().toISOString();
+  const focusText = category?.trim() ? ` Focus on category: ${category.trim()}.` : '';
+  const instructionText = instructions?.trim() ? ` Style guidance: ${instructions.trim()}.` : '';
+
+  return Array.from({ length: count }, (_, index) => {
+    const seed = seeds[index % seeds.length];
+    const variant = index + 1;
+    if (seed.type === 'multiple_choice') {
+      const baseChoices = seed.choices ?? { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
+      return normalizeAuthoredItem({
+        id: `ai-${Date.now()}-${variant}`,
+        question: `${seed.question} Create a similar but distinct example ${variant}.${focusText}${instructionText}`,
+        type: 'multiple_choice',
+        choices: {
+          A: buildGeneratedChoice(baseChoices.A ?? 'Choice A', 'A', index),
+          B: buildGeneratedChoice(baseChoices.B ?? 'Choice B', 'B', index),
+          C: buildGeneratedChoice(baseChoices.C ?? 'Choice C', 'C', index),
+          D: buildGeneratedChoice(baseChoices.D ?? 'Choice D', 'D', index),
+        },
+        correct_answer: seed.correct_answer,
+        category: category?.trim() || seed.category,
+        origin: 'ai_generated',
+        generation_context: {
+          sourceItemKeys: [seed.id],
+          promptVersion: 'fallback-v1',
+          model: 'fallback-generator',
+          generatedAt,
+        },
+      });
+    }
+
+    return normalizeAuthoredItem({
+      id: `ai-${Date.now()}-${variant}`,
+      question: `${seed.question} Produce a fresh example ${variant}.${focusText}${instructionText}`,
+      type: 'open_ended',
+      correct_answer: `${seed.correct_answer} (variant ${variant})`,
+      match_type: seed.match_type ?? 'contains',
+      category: category?.trim() || seed.category,
+      origin: 'ai_generated',
+      generation_context: {
+        sourceItemKeys: [seed.id],
+        promptVersion: 'fallback-v1',
+        model: 'fallback-generator',
+        generatedAt,
+      },
+    });
+  });
+}
+
+async function generateRowsWithOpenAI(
+  seeds: AuthoredEvalItem[],
+  count: number,
+  category?: string,
+  instructions?: string
+): Promise<AuthoredEvalItem[]> {
+  if (!process.env.OPENAI_API_KEY) {
+    return fallbackGenerateRows(seeds, count, category, instructions);
+  }
+
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const prompt = [
+    'Generate eval items as strict JSON with shape {"items": AuthoredEvalItem[]}.',
+    'Each item must include: id, question, type, correct_answer.',
+    'For multiple_choice items include exactly choices A, B, C, D and correct_answer as one of those keys.',
+    'For open_ended items omit choices and include match_type of exact, contains, or regex when useful.',
+    'Keep the task format, answer style, and difficulty aligned to the seed rows.',
+    'Avoid near-duplicates and do not repeat seed wording exactly.',
+    category?.trim() ? `Category focus: ${category.trim()}` : '',
+    instructions?.trim() ? `Additional guidance: ${instructions.trim()}` : '',
+    `Generate ${count} items.`,
+    `Seed rows: ${JSON.stringify(seeds)}`,
+  ].filter(Boolean).join('\n');
+
+  const completion = await client.chat.completions.create({
+    model: AI_GENERATION_MODEL,
+    temperature: 0.8,
+    messages: [
+      {
+        role: 'system',
+        content: 'You create eval-set rows for benchmarking LLMs. Return JSON only.',
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    response_format: { type: 'json_object' },
+  });
+
+  const content = completion.choices[0]?.message?.content ?? '{}';
+  const parsed = JSON.parse(content) as { items?: AuthoredEvalItem[] };
+  const validated = AuthoredEvalItemArraySchema.parse(parsed.items ?? []).map((item) =>
+    normalizeAuthoredItem({
+      ...item,
+      origin: 'ai_generated',
+      generation_context: {
+        ...item.generation_context,
+        sourceItemKeys: item.generation_context?.sourceItemKeys?.length ? item.generation_context.sourceItemKeys : seeds.map((seed) => seed.id),
+        promptVersion: item.generation_context?.promptVersion ?? 'openai-v1',
+        model: item.generation_context?.model ?? AI_GENERATION_MODEL,
+        generatedAt: item.generation_context?.generatedAt ?? new Date().toISOString(),
+      },
+    })
+  );
+
+  return validated;
+}
+
+router.get('/sets', async (_req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    if (!dbState.connected) {
+      return res.json(listMemoryEvalSets());
+    }
+
+    const readPool = getReadPool();
+    const result = await readPool.query<EvalSetSummary & { item_count: string }>(
+      `SELECT
+        s.id,
+        s.name,
+        s.description,
+        s.tags,
+        s.created_at,
+        s.updated_at,
+        COUNT(i.id) AS item_count
+      FROM eval_sets s
+      LEFT JOIN eval_set_items i ON i.eval_set_id = s.id
+      GROUP BY s.id
+      ORDER BY s.updated_at DESC`
+    );
+
+    return res.json(result.rows.map((row) => ({
+      ...row,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      item_count: Number(row.item_count),
+    })));
+  } catch (error) {
+    console.error('[routes/evals] GET /sets error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/sets', async (req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    const parsed = EvalSetPayloadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid eval set payload', details: parsed.error.flatten() });
+    }
+
+    const payload = parsed.data;
+    const normalizedPayload = {
+      ...payload,
+      description: payload.description?.trim() || null,
+      default_system_prompt: payload.default_system_prompt?.trim() || null,
+      items: payload.items.map(normalizeAuthoredItem),
+    };
+    const saved = dbState.connected
+      ? await saveEvalSet(null, normalizedPayload)
+      : saveMemoryEvalSet({ id: null, ...normalizedPayload });
+    return res.status(201).json(saved);
+  } catch (error) {
+    console.error('[routes/evals] POST /sets error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/sets/:id', async (req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    if (!dbState.connected) {
+      const memorySet = getMemoryEvalSet(req.params.id);
+      if (!memorySet) {
+        return res.status(404).json({ error: 'Eval set not found' });
+      }
+      return res.json(memorySet);
+    }
+
+    const evalSet = await getEvalSetById(req.params.id);
+    if (!evalSet) {
+      return res.status(404).json({ error: 'Eval set not found' });
+    }
+
+    return res.json(evalSet);
+  } catch (error) {
+    console.error('[routes/evals] GET /sets/:id error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/sets/:id', async (req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    const parsed = EvalSetPayloadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid eval set payload', details: parsed.error.flatten() });
+    }
+
+    const payload = parsed.data;
+    const normalizedPayload = {
+      ...payload,
+      description: payload.description?.trim() || null,
+      default_system_prompt: payload.default_system_prompt?.trim() || null,
+      items: payload.items.map(normalizeAuthoredItem),
+    };
+
+    if (!dbState.connected) {
+      const existing = getMemoryEvalSet(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Eval set not found' });
+      }
+      return res.json(saveMemoryEvalSet({ id: req.params.id, ...normalizedPayload }));
+    }
+
+    const existing = await getEvalSetById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Eval set not found' });
+    }
+
+    const saved = await saveEvalSet(req.params.id, normalizedPayload);
+    return res.json(saved);
+  } catch (error) {
+    console.error('[routes/evals] PUT /sets/:id error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/sets/:id', async (req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    if (!dbState.connected) {
+      const deleted = deleteMemoryEvalSet(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Eval set not found' });
+      }
+      return res.status(204).send();
+    }
+
+    const pool = getPool();
+    const result = await pool.query('DELETE FROM eval_sets WHERE id = $1', [req.params.id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Eval set not found' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('[routes/evals] DELETE /sets/:id error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/sets/:id/generate', async (req, res) => {
+  try {
+    const dbState = await checkDatabaseConnection();
+    const evalSet = dbState.connected
+      ? await getEvalSetById(req.params.id)
+      : getMemoryEvalSet(req.params.id);
+    if (!evalSet) {
+      return res.status(404).json({ error: 'Eval set not found' });
+    }
+
+    const parsed = EvalSetGenerationRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid generation payload', details: parsed.error.flatten() });
+    }
+
+    const { seedItemKeys, count, category, instructions } = parsed.data;
+    const seeds = seedItemKeys.length > 0
+      ? evalSet.items.filter((item) => seedItemKeys.includes(item.id))
+      : evalSet.items.filter((item) => item.question.trim() && item.correct_answer.trim()).slice(0, 3);
+
+    if (seeds.length === 0) {
+      return res.status(400).json({ error: 'Select at least one valid seed row before generation.' });
+    }
+
+    let generated = await generateRowsWithOpenAI(seeds, count, category, instructions);
+    generated = AuthoredEvalItemArraySchema.parse(generated).map((item) =>
+      normalizeAuthoredItem({
+        ...item,
+        origin: 'ai_generated',
+        generation_context: {
+          ...item.generation_context,
+          sourceItemKeys: item.generation_context?.sourceItemKeys?.length ? item.generation_context.sourceItemKeys : seeds.map((seed) => seed.id),
+          generatedAt: item.generation_context?.generatedAt ?? new Date().toISOString(),
+        },
+      })
+    );
+
+    return res.json({
+      items: generated,
+      provider: process.env.OPENAI_API_KEY ? 'openai' : 'fallback',
+    });
+  } catch (error) {
+    console.error('[routes/evals] POST /sets/:id/generate error:', error);
+    return res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to generate eval rows',
+    });
+  }
+});
+
+router.post('/runs', upload.single('evalFile'), async (req, res) => {
+  try {
     const name = req.body.name?.trim();
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
     }
 
-    const systemPrompt = req.body.systemPrompt?.trim() ?? '';
-    const modelsConfigRaw = req.body.modelsConfig;
-    if (!modelsConfigRaw) {
-      return res.status(400).json({ error: 'modelsConfig is required' });
-    }
-
     let modelsConfig: ModelSpec[];
     try {
-      modelsConfig = JSON.parse(modelsConfigRaw);
-    } catch {
-      return res.status(400).json({ error: 'modelsConfig must be valid JSON (ModelSpec[] array)' });
-    }
-
-    const maxTokens = parseInt(req.body.maxTokens ?? '256', 10) || 256;
-    let evalSet: EvalItem[];
-
-    try {
-      evalSet = parseEvalItems(fileBuffer, req.body as Record<string, string>);
+      modelsConfig = parseModelsConfig(req.body.modelsConfig);
     } catch (error) {
-      const details = (error as Error & { details?: unknown }).details;
-      return res.status(400).json({
-        error: error instanceof Error ? error.message : 'Invalid eval set format',
-        ...(details ? { details } : {}),
-      });
+      return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid modelsConfig' });
     }
+
+    const maxTokens = parseInt(String(req.body.maxTokens ?? '256'), 10) || 256;
+    const fileBuffer = req.file?.buffer;
+    const evalSetId = typeof req.body.evalSetId === 'string' && req.body.evalSetId.trim()
+      ? req.body.evalSetId.trim()
+      : null;
+    const inlineItemsRaw = req.body.evalItems;
+
+    let authoredItems: AuthoredEvalItem[] | null = null;
+    let evalSetName: string | null = null;
+    let defaultSystemPrompt: string | null = null;
+
+    if (fileBuffer) {
+      try {
+        authoredItems = parseEvalItems(fileBuffer, req.body as Record<string, string>).map((item) => ({
+          ...item,
+          origin: 'human' as const,
+        }));
+      } catch (error) {
+        const details = (error as Error & { details?: unknown }).details;
+        return res.status(400).json({
+          error: error instanceof Error ? error.message : 'Invalid eval set format',
+          ...(details ? { details } : {}),
+        });
+      }
+    } else if (evalSetId) {
+      const dbState = await checkDatabaseConnection();
+      const evalSet = dbState.connected
+        ? await getEvalSetById(evalSetId)
+        : getMemoryEvalSet(evalSetId);
+      if (!evalSet) {
+        return res.status(404).json({ error: 'Eval set not found' });
+      }
+
+      authoredItems = evalSet.items.map(normalizeAuthoredItem);
+      evalSetName = evalSet.name;
+      defaultSystemPrompt = evalSet.default_system_prompt;
+    } else if (inlineItemsRaw) {
+      try {
+        const inlineItems = typeof inlineItemsRaw === 'string' ? JSON.parse(inlineItemsRaw) : inlineItemsRaw;
+        authoredItems = AuthoredEvalItemArraySchema.parse(inlineItems).map(normalizeAuthoredItem);
+      } catch (error) {
+        return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid evalItems payload' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Provide one of evalFile, evalSetId, or evalItems.' });
+    }
+
+    const evalSet = stripAuthoredMetadata(authoredItems);
+    const systemPrompt = req.body.systemPrompt?.trim() || defaultSystemPrompt || '';
 
     const { storageMode, databaseError } = await getStorageMode();
     const runId = uuidv4();
@@ -151,7 +673,8 @@ router.post('/runs', upload.single('evalFile'), async (req, res) => {
       id: runId,
       name,
       system_prompt: systemPrompt || null,
-      eval_set_filename: req.file?.originalname ?? null,
+      eval_set_filename: req.file?.originalname ?? (evalSetId ? `${evalSetName ?? 'saved-eval-set'}.ui` : null),
+      eval_set_id: evalSetId,
       eval_set_data: evalSet,
       models_config: modelsConfig,
       status: 'pending',
@@ -163,13 +686,14 @@ router.post('/runs', upload.single('evalFile'), async (req, res) => {
     if (storageMode === 'database') {
       const pool = getPool();
       await pool.query(
-        `INSERT INTO eval_runs (id, name, system_prompt, eval_set_filename, eval_set_data, models_config, status)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'pending')`,
+        `INSERT INTO eval_runs (id, name, system_prompt, eval_set_filename, eval_set_id, eval_set_data, models_config, status)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, 'pending')`,
         [
           run.id,
           run.name,
           run.system_prompt,
           run.eval_set_filename,
+          run.eval_set_id ?? null,
           JSON.stringify(run.eval_set_data),
           JSON.stringify(run.models_config),
         ]
@@ -308,8 +832,8 @@ router.get('/runs', async (_req, res) => {
       return res.json(memoryRuns);
     }
 
-    const pool = getPool();
-    const result = await pool.query<EvalRunSummary>(`
+    const readPool = getReadPool();
+    const result = await readPool.query<EvalRunSummary>(`
       SELECT
         r.id,
         r.name,
@@ -352,13 +876,13 @@ router.get('/runs/:id', async (req, res) => {
       return res.status(503).json({ error: 'Database unavailable and run is not cached in fallback memory.' });
     }
 
-    const pool = getPool();
-    const runResult = await pool.query<EvalRun>('SELECT * FROM eval_runs WHERE id = $1', [req.params.id]);
+    const readPool = getReadPool();
+    const runResult = await readPool.query<EvalRun>('SELECT * FROM eval_runs WHERE id = $1', [req.params.id]);
     if (runResult.rows.length === 0) {
       return res.status(404).json({ error: 'Run not found' });
     }
 
-    const resultsResult = await pool.query(
+    const resultsResult = await readPool.query(
       'SELECT * FROM eval_results WHERE run_id = $1 ORDER BY created_at',
       [req.params.id]
     );
@@ -493,7 +1017,7 @@ router.get('/models', async (_req, res) => {
 
   const apiProviders = await Promise.all(
     providerConfig.map(async ({ provider, envKey, defaultModel }) => {
-      const configured = provider === 'mock' 
+      const configured = provider === 'mock'
         ? process.env.MOCK_ENABLED === 'true'
         : Boolean(process.env[envKey]);
       const apiKey = process.env[envKey] ?? '';
@@ -529,6 +1053,7 @@ router.get('/models', async (_req, res) => {
 
   const dbState = await checkDatabaseConnection();
   const isProd = process.env.NODE_ENV === 'production';
+  const databaseConfig = resolveDatabaseConfig();
 
   return res.json({
     localModels,
@@ -538,6 +1063,15 @@ router.get('/models', async (_req, res) => {
       databaseConnected: dbState.connected,
       storageMode: dbState.connected ? 'database' : 'memory',
       databaseError: dbState.error && !isProd ? dbState.error : null,
+      databaseConfig: {
+        configured: databaseConfig.configured,
+        source: databaseConfig.source,
+        label: databaseConfig.label,
+        envKeys: databaseConfig.envKeys,
+        connectionString: databaseConfig.redactedConnectionString,
+        sslEnabled: databaseConfig.sslEnabled,
+        readReplicaConfigured: Boolean(process.env.DATABASE_READ_URL),
+      },
     },
   });
 });

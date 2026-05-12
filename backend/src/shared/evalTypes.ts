@@ -6,6 +6,7 @@
 
 export type EvalItemType = 'multiple_choice' | 'open_ended';
 export type MatchType = 'exact' | 'contains' | 'regex';
+export type EvalItemOrigin = 'human' | 'ai_generated';
 
 export interface EvalItem {
   id: string;                              // unique within an eval set
@@ -15,6 +16,39 @@ export interface EvalItem {
   correct_answer: string;                  // letter key for MC; expected string for open-ended
   match_type?: MatchType;                  // open-ended only; defaults to 'contains'
   category?: string;                       // optional; enables per-category breakdown
+}
+
+export interface GenerationContext {
+  sourceItemKeys?: string[];
+  promptVersion?: string;
+  model?: string;
+  generatedAt?: string;
+}
+
+export interface AuthoredEvalItem extends EvalItem {
+  origin?: EvalItemOrigin;
+  generation_context?: GenerationContext;
+}
+
+export interface EvalSet {
+  id: string;
+  name: string;
+  description: string | null;
+  default_system_prompt: string | null;
+  tags: string[];
+  items: AuthoredEvalItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvalSetSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  tags: string[];
+  item_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── Model Configuration ────────────────────────────────────────────────────
@@ -47,6 +81,7 @@ export interface EvalRun {
   name: string;
   system_prompt: string | null;
   eval_set_filename: string | null;
+  eval_set_id?: string | null;
   eval_set_data: EvalItem[];               // stored as JSONB, parsed on read
   models_config: ModelSpec[];              // stored as JSONB, parsed on read
   status: RunStatus;
