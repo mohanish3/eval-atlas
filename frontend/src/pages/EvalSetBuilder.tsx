@@ -402,9 +402,9 @@ export default function EvalSetBuilder() {
               </div>
             )}
 
-            <div className={cn('mt-8 grid gap-6', isEditMode ? 'grid-cols-1' : 'xl:grid-cols-[1.7fr_1fr]')}>
-              <div className="space-y-6">
-                <section className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+            <div className={cn('mt-8 grid gap-6', isEditMode ? 'grid-cols-1' : '2xl:grid-cols-[minmax(0,1fr)_320px]')}>
+              <div className="min-w-0 space-y-6">
+                <section className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/40 p-5">
                   <h2 className="text-lg font-semibold text-slate-100">Metadata</h2>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div className="md:col-span-2">
@@ -447,7 +447,7 @@ export default function EvalSetBuilder() {
                     <div className="text-xs text-slate-500">{rows.length} row{rows.length !== 1 ? 's' : ''}</div>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="max-w-full overflow-x-auto">
                     <table className="min-w-[920px] w-full border-separate border-spacing-y-2 text-sm">
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -609,7 +609,7 @@ export default function EvalSetBuilder() {
               </div>
 
               {!isEditMode && (
-                <div className="space-y-6">
+                <div className="min-w-0 space-y-6">
                   <section className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
                     <h2 className="text-lg font-semibold text-slate-100">Validation</h2>
                     {!validationSummary.hasErrors ? (
