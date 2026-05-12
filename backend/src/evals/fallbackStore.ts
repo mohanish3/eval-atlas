@@ -1,7 +1,19 @@
-import type { EvalResult, EvalRun, EvalRunSummary, ModelSpec, RunStatus, StorageMode } from '../shared/evalTypes.js';
+import { v4 as uuidv4 } from 'uuid';
+import type {
+  AuthoredEvalItem,
+  EvalResult,
+  EvalRun,
+  EvalRunSummary,
+  EvalSet,
+  EvalSetSummary,
+  ModelSpec,
+  RunStatus,
+  StorageMode,
+} from '../shared/evalTypes.js';
 
 const runs = new Map<string, EvalRun>();
 const results = new Map<string, EvalResult[]>();
+const evalSets = new Map<string, EvalSet>();
 
 function sortByNewest<T extends { created_at: string }>(items: T[]): T[] {
   return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -84,4 +96,51 @@ export function hasMemoryRun(runId: string): boolean {
 
 export function getMemoryModelsConfig(runId: string): ModelSpec[] {
   return runs.get(runId)?.models_config ?? [];
+}
+
+export function listMemoryEvalSets(): EvalSetSummary[] {
+  return sortByNewest(
+    Array.from(evalSets.values()).map((evalSet) => ({
+      id: evalSet.id,
+      name: evalSet.name,
+      description: evalSet.description,
+      tags: evalSet.tags,
+      item_count: evalSet.items.length,
+      created_at: evalSet.created_at,
+      updated_at: evalSet.updated_at,
+    }))
+  );
+}
+
+export function getMemoryEvalSet(evalSetId: string): EvalSet | null {
+  return evalSets.get(evalSetId) ?? null;
+}
+
+export function saveMemoryEvalSet(payload: {
+  id?: string | null;
+  name: string;
+  description: string | null;
+  default_system_prompt: string | null;
+  tags: string[];
+  items: AuthoredEvalItem[];
+}): EvalSet {
+  const existing = payload.id ? evalSets.get(payload.id) : null;
+  const now = new Date().toISOString();
+  const evalSet: EvalSet = {
+    id: payload.id ?? uuidv4(),
+    name: payload.name,
+    description: payload.description,
+    default_system_prompt: payload.default_system_prompt,
+    tags: payload.tags,
+    items: payload.items,
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  };
+
+  evalSets.set(evalSet.id, evalSet);
+  return evalSet;
+}
+
+export function deleteMemoryEvalSet(evalSetId: string): boolean {
+  return evalSets.delete(evalSetId);
 }

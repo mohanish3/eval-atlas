@@ -149,13 +149,94 @@ test_placeholder_database_url() {
   [[ "$database_url" =~ ://[^:]+:change-me@ ]]
 }
 
-sync_backend_database_url() {
+get_boolean_env_value() {
+  local value="${1:-}"
+  if [[ -z "$value" ]]; then
+    echo ""
+    return
+  fi
+
+  case "${value,,}" in
+    true|1|yes|on|require|required) echo "true" ;;
+    false|0|no|off|disable|disabled) echo "false" ;;
+    *) echo "" ;;
+  esac
+}
+
+build_database_url() {
+  local user="$1"
+  local password="$2"
+  local host="$3"
+  local port="$4"
+  local database="$5"
+  local ssl_enabled="${6:-false}"
+
+  python - "$user" "$password" "$host" "$port" "$database" "$ssl_enabled" <<'PY'
+from urllib.parse import quote
+import sys
+
+user, password, host, port, database, ssl_enabled = sys.argv[1:]
+query = "?sslmode=require" if ssl_enabled == "true" else ""
+print(f"postgresql://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{quote(database, safe='')}{query}")
+PY
+}
+
+sync_backend_database_config() {
   local postgres_user postgres_password postgres_db postgres_port database_url
+  local root_database_url database_host database_port database_name database_user database_password database_ssl
+  local supabase_project_ref supabase_password supabase_region supabase_use_pooler supabase_db_name
   postgres_user="$(get_env_value "$REPO_ROOT/.env" "POSTGRES_USER" "postgres")"
   postgres_password="$(get_env_value "$REPO_ROOT/.env" "POSTGRES_PASSWORD" "change-me")"
   postgres_db="$(get_env_value "$REPO_ROOT/.env" "POSTGRES_DB" "eval_atlas")"
   postgres_port="$(get_env_value "$REPO_ROOT/.env" "POSTGRES_PORT" "5432")"
-  database_url="postgresql://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}"
+  root_database_url="$(get_env_value "$REPO_ROOT/.env" "DATABASE_URL" "")"
+  database_host="$(get_env_value "$REPO_ROOT/.env" "DATABASE_HOST" "")"
+  database_port="$(get_env_value "$REPO_ROOT/.env" "DATABASE_PORT" "5432")"
+  database_name="$(get_env_value "$REPO_ROOT/.env" "DATABASE_NAME" "")"
+  database_user="$(get_env_value "$REPO_ROOT/.env" "DATABASE_USER" "")"
+  database_password="$(get_env_value "$REPO_ROOT/.env" "DATABASE_PASSWORD" "")"
+  database_ssl="$(get_boolean_env_value "$(get_env_value "$REPO_ROOT/.env" "DATABASE_SSL" "")")"
+  supabase_project_ref="$(get_env_value "$REPO_ROOT/.env" "SUPABASE_PROJECT_REF" "")"
+  supabase_password="$(get_env_value "$REPO_ROOT/.env" "SUPABASE_DB_PASSWORD" "")"
+  supabase_region="$(get_env_value "$REPO_ROOT/.env" "SUPABASE_REGION" "")"
+  supabase_use_pooler="$(get_boolean_env_value "$(get_env_value "$REPO_ROOT/.env" "SUPABASE_USE_POOLER" "")")"
+  supabase_db_name="$(get_env_value "$REPO_ROOT/.env" "SUPABASE_DB_NAME" "postgres")"
+
+  if [[ -n "$root_database_url" ]]; then
+    database_url="$root_database_url"
+  elif [[ -n "$database_host" && -n "$database_name" && -n "$database_user" && -n "$database_password" ]]; then
+    database_url="$(build_database_url "$database_user" "$database_password" "$database_host" "$database_port" "$database_name" "${database_ssl:-false}")"
+  elif [[ -n "$supabase_project_ref" && -n "$supabase_password" ]]; then
+    if [[ "$supabase_use_pooler" == "true" && -n "$supabase_region" ]]; then
+      database_url="$(build_database_url "postgres.${supabase_project_ref}" "$supabase_password" "aws-0-${supabase_region}.pooler.supabase.com" "6543" "$supabase_db_name" "true")"
+    else
+      database_url="$(build_database_url "postgres" "$supabase_password" "db.${supabase_project_ref}.supabase.co" "5432" "$supabase_db_name" "true")"
+    fi
+  else
+    database_url="postgresql://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}"
+  fi
+
+  for key in \
+    DATABASE_READ_URL \
+    DATABASE_HOST \
+    DATABASE_PORT \
+    DATABASE_NAME \
+    DATABASE_USER \
+    DATABASE_PASSWORD \
+    DATABASE_SSL \
+    DB_SSL_REJECT_UNAUTHORIZED \
+    SUPABASE_PROJECT_REF \
+    SUPABASE_DB_PASSWORD \
+    SUPABASE_REGION \
+    SUPABASE_USE_POOLER \
+    SUPABASE_DB_NAME
+  do
+    value="$(get_env_value "$REPO_ROOT/.env" "$key" "__missing__")"
+    if [[ "$value" != "__missing__" ]]; then
+      set_env_value "$BACKEND_DIR/.env" "$key" "$value"
+    fi
+  done
+
   set_env_value "$BACKEND_DIR/.env" "DATABASE_URL" "$database_url"
   echo "$database_url"
 }
@@ -212,7 +293,7 @@ ensure_env_file "$FRONTEND_DIR/.env" "$FRONTEND_DIR/.env.example"
 POSTGRES_PORT="$(get_env_value "$REPO_ROOT/.env" "POSTGRES_PORT" "5432")"
 BACKEND_PORT="$(get_env_value "$BACKEND_DIR/.env" "PORT" "3000")"
 FRONTEND_PORT="5173"
-DATABASE_URL="$(sync_backend_database_url)"
+DATABASE_URL="$(sync_backend_database_config)"
 DB_REACHABLE=0
 if test_tcp_port "127.0.0.1" "$POSTGRES_PORT"; then
   DB_REACHABLE=1

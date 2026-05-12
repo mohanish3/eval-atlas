@@ -38,6 +38,7 @@ export interface EvalRun {
   name: string;
   system_prompt: string | null;
   eval_set_filename: string | null;
+  eval_set_id?: string | null;
   eval_set_data: unknown[];
   models_config: Array<{ provider: ModelProvider; modelId: string }>;
   status: RunStatus;
@@ -50,6 +51,15 @@ export interface RuntimeStatus {
   databaseConnected: boolean;
   storageMode: StorageMode;
   databaseError: string | null;
+  databaseConfig?: {
+    configured: boolean;
+    source: string;
+    label: string;
+    envKeys: string[];
+    connectionString: string | null;
+    sslEnabled: boolean;
+    readReplicaConfigured: boolean;
+  };
 }
 
 // ─── Store Interface ──────────────────────────────────────────────────────────
@@ -120,6 +130,15 @@ export const useEvalStore = create<EvalStore>((set) => ({
     databaseConnected: true,
     storageMode: 'database',
     databaseError: null,
+    databaseConfig: {
+      configured: false,
+      source: 'unconfigured',
+      label: 'Unconfigured',
+      envKeys: [],
+      connectionString: null,
+      sslEnabled: false,
+      readReplicaConfigured: false,
+    },
   },
   setRuntimeStatus: (runtimeStatus) => set({ runtimeStatus }),
 }));
