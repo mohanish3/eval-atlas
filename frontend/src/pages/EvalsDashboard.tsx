@@ -422,7 +422,7 @@ export default function EvalsDashboard() {
                 ))}
               </div>
             ) : runs.length === 0 ? (
-              <div className="rounded-[2rem] border border-dashed border-white/10 bg-white/[0.03] py-16 text-center backdrop-blur-xl">
+              <div className="rounded-[2rem] border border-dashed border-white/10 bg-white/[0.03] py-16 text-center shadow-card backdrop-blur-xl">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
                   <FlaskConical className="h-7 w-7 text-muted-foreground/50" />
                 </div>
@@ -438,7 +438,7 @@ export default function EvalsDashboard() {
                 <button
                   key={run.id}
                   onClick={() => navigate(`/evals/${run.id}`)}
-                  className="group w-full rounded-[1.4rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-400/20"
+                  className="group w-full rounded-[1.4rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-left shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-400/20 hover:shadow-card-hover"
                 >
                   <div className="flex items-center gap-4">
                     <div className="min-w-0 flex-1">

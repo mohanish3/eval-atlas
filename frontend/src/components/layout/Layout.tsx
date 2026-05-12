@@ -1,5 +1,6 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useEvalStore } from '../../store/useEvalStore';
 import Header from './Header';
 
@@ -9,26 +10,64 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { error, setError } = useEvalStore();
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') {
+      return 'dark';
+    }
+
+    const storedTheme = window.localStorage.getItem('eval-atlas-theme');
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      return storedTheme;
+    }
+
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
 
   useEffect(() => {
-    document.documentElement.classList.add('dark');
-    document.body.classList.add('dark');
+    const root = document.documentElement;
+    const { body } = document;
+
+    root.classList.remove('light', 'dark');
+    body.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    body.classList.add(theme);
+    root.dataset.theme = theme;
+    body.dataset.theme = theme;
+    window.localStorage.setItem('eval-atlas-theme', theme);
+
     return () => {
-      document.documentElement.classList.remove('dark');
-      document.body.classList.remove('dark');
+      root.classList.remove('light', 'dark');
+      body.classList.remove('light', 'dark');
+      delete root.dataset.theme;
+      delete body.dataset.theme;
     };
-  }, []);
+  }, [theme]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute inset-x-0 top-[-18rem] h-[34rem] bg-[radial-gradient(circle_at_top,rgba(97,210,255,0.18),transparent_48%),radial-gradient(circle_at_30%_25%,rgba(255,122,89,0.16),transparent_28%),radial-gradient(circle_at_72%_18%,rgba(84,109,255,0.22),transparent_30%)]" />
-        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:72px_72px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(2,6,23,0.48)_35%,rgba(2,6,23,0.9))]" />
+        <div className={cn(
+          'absolute inset-x-0 top-[-18rem] h-[34rem]',
+          theme === 'dark'
+            ? 'bg-[radial-gradient(circle_at_top,rgba(97,210,255,0.18),transparent_48%),radial-gradient(circle_at_30%_25%,rgba(255,122,89,0.16),transparent_28%),radial-gradient(circle_at_72%_18%,rgba(84,109,255,0.22),transparent_30%)]'
+            : 'bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.18),transparent_46%),radial-gradient(circle_at_30%_22%,rgba(251,146,60,0.14),transparent_24%),radial-gradient(circle_at_72%_18%,rgba(59,130,246,0.12),transparent_28%)]'
+        )} />
+        <div className={cn(
+          'absolute inset-0 [background-size:72px_72px]',
+          theme === 'dark'
+            ? 'opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)]'
+            : 'opacity-50 [background-image:linear-gradient(rgba(15,23,42,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.04)_1px,transparent_1px)]'
+        )} />
+        <div className={cn(
+          'absolute inset-0',
+          theme === 'dark'
+            ? 'bg-[linear-gradient(180deg,transparent,rgba(2,6,23,0.48)_35%,rgba(2,6,23,0.9))]'
+            : 'bg-[linear-gradient(180deg,rgba(255,255,255,0.2),rgba(248,250,252,0.74)_40%,rgba(241,245,249,0.96))]'
+        )} />
       </div>
 
       <div className="relative flex min-h-screen flex-col">
-        <Header />
+        <Header theme={theme} onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))} />
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-hidden relative">
         {error && (
