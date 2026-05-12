@@ -1,22 +1,59 @@
-# Eval Atlas - Project Instructions
+# GEMINI.md
 
-## Tech Stack
-- **Backend:** Node.js (Express), TypeScript, Knex.js (Postgres), Jest.
-- **Frontend:** React (Vite), TypeScript, Tailwind CSS, Playwright.
+Project instructions for Gemini agents. Use [AGENTS.md](./AGENTS.md) as canonical repo guide.
 
-## Security Mandates
-- **No Secrets:** Never commit `.env`, API keys, or credentials.
-- **API Protection:** Set `API_TOKEN` in production.
-- **CORS:** Set explicit `CORS_ORIGIN` in production.
-- **DB Security:** Fix Postgres TLS (`rejectUnauthorized`) before production deploy.
-- **Mock Gating:** Gate Mock provider via `MOCK_ENABLED` in production.
+## Priorities
 
-## Development Workflow
-- **Backend:** `cd backend && npm install`
-- **Frontend:** `cd frontend && npm install`
-- **Audit:** Run `npm audit` frequently in `backend/`.
-- **Migrations:** Use Knex migrations for DB schema changes.
+1. Preserve security defaults. Never commit secrets.
+2. Keep frontend and backend API shapes aligned.
+3. Prefer incremental changes over broad refactors.
+4. Sync agent docs when workflow or routes change.
 
-## Testing
-- **Backend:** `npm test`
-- **Frontend:** `npm run test:e2e` (Playwright)
+## Commands
+
+```bash
+npm run build
+npm run lint
+npm run test
+npm run migrate
+```
+
+Workspace commands:
+
+```bash
+cd backend && npm run dev
+cd backend && npm test
+cd frontend && npm run dev
+cd frontend && npm run build
+cd frontend && npm test
+```
+
+## Repo Facts
+
+- Backend: Express + TypeScript + Postgres + in-memory fallback
+- Frontend: React + Vite + TypeScript + Tailwind
+- Realtime results: SSE from `/api/evals/runs/:id/stream`
+- Authored eval sets persisted in `eval_sets` / `eval_set_items` or memory fallback
+- Saved eval sets export to CSV in frontend
+
+## Current Pages
+
+- `/evals`
+- `/evals/sets`
+- `/evals/config`
+- `/evals/builder/new`
+- `/evals/builder/:evalSetId`
+- `/evals/:id`
+
+## Security
+
+- Keep `.env` out of git
+- Set `API_TOKEN` in production
+- Set explicit `CORS_ORIGIN` in production
+- Review DB TLS config before public deploy
+- Gate mock provider with `MOCK_ENABLED`
+
+## DB Env Notes
+
+- Backend accepts `DATABASE_URL`, granular `DATABASE_*` fields, or `SUPABASE_*` fields for Postgres config.
+- Optional `DATABASE_READ_URL` is used for read-only eval queries; primary writes still use main DB config.
