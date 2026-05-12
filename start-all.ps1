@@ -178,12 +178,90 @@ function Test-PlaceholderDatabaseUrl {
   return $DatabaseUrl -match "://[^:]+:change-me@"
 }
 
-function Sync-BackendDatabaseUrl {
+function Get-BooleanEnvValue {
+  param([string]$Value)
+
+  if (-not $Value) {
+    return $null
+  }
+
+  switch ($Value.Trim().ToLowerInvariant()) {
+    { $_ -in @("true", "1", "yes", "on", "require", "required") } { return $true }
+    { $_ -in @("false", "0", "no", "off", "disable", "disabled") } { return $false }
+    default { return $null }
+  }
+}
+
+function Build-DatabaseUrl {
+  param(
+    [string]$User,
+    [string]$Password,
+    [string]$HostName,
+    [string]$Port,
+    [string]$Database,
+    [bool]$SslEnabled = $false
+  )
+
+  $encodedUser = [System.Uri]::EscapeDataString($User)
+  $encodedPassword = [System.Uri]::EscapeDataString($Password)
+  $encodedDatabase = [System.Uri]::EscapeDataString($Database)
+  $suffix = if ($SslEnabled) { "?sslmode=require" } else { "" }
+  return "postgresql://$encodedUser`:$encodedPassword@$HostName`:$Port/$encodedDatabase$suffix"
+}
+
+function Sync-BackendDatabaseConfig {
   $postgresUser = Get-EnvValue -Path $RootEnv -Key "POSTGRES_USER" -Default "postgres"
   $postgresPassword = Get-EnvValue -Path $RootEnv -Key "POSTGRES_PASSWORD" -Default "change-me"
   $postgresDb = Get-EnvValue -Path $RootEnv -Key "POSTGRES_DB" -Default "eval_atlas"
   $postgresPort = Get-EnvValue -Path $RootEnv -Key "POSTGRES_PORT" -Default "5432"
-  $databaseUrl = "postgresql://{0}:{1}@localhost:{2}/{3}" -f $postgresUser, $postgresPassword, $postgresPort, $postgresDb
+  $rootDatabaseUrl = Get-EnvValue -Path $RootEnv -Key "DATABASE_URL" -Default ""
+  $databaseHost = Get-EnvValue -Path $RootEnv -Key "DATABASE_HOST" -Default ""
+  $databasePort = Get-EnvValue -Path $RootEnv -Key "DATABASE_PORT" -Default "5432"
+  $databaseName = Get-EnvValue -Path $RootEnv -Key "DATABASE_NAME" -Default ""
+  $databaseUser = Get-EnvValue -Path $RootEnv -Key "DATABASE_USER" -Default ""
+  $databasePassword = Get-EnvValue -Path $RootEnv -Key "DATABASE_PASSWORD" -Default ""
+  $databaseSsl = Get-BooleanEnvValue (Get-EnvValue -Path $RootEnv -Key "DATABASE_SSL" -Default "")
+  $supabaseProjectRef = Get-EnvValue -Path $RootEnv -Key "SUPABASE_PROJECT_REF" -Default ""
+  $supabasePassword = Get-EnvValue -Path $RootEnv -Key "SUPABASE_DB_PASSWORD" -Default ""
+  $supabaseRegion = Get-EnvValue -Path $RootEnv -Key "SUPABASE_REGION" -Default ""
+  $supabaseUsePooler = Get-BooleanEnvValue (Get-EnvValue -Path $RootEnv -Key "SUPABASE_USE_POOLER" -Default "")
+  $supabaseDbName = Get-EnvValue -Path $RootEnv -Key "SUPABASE_DB_NAME" -Default "postgres"
+
+  if ($rootDatabaseUrl) {
+    $databaseUrl = $rootDatabaseUrl
+  } elseif ($databaseHost -and $databaseName -and $databaseUser -and $databasePassword) {
+    $databaseUrl = Build-DatabaseUrl -User $databaseUser -Password $databasePassword -HostName $databaseHost -Port $databasePort -Database $databaseName -SslEnabled ($databaseSsl -eq $true)
+  } elseif ($supabaseProjectRef -and $supabasePassword) {
+    if ($supabaseUsePooler -eq $true -and $supabaseRegion) {
+      $databaseUrl = Build-DatabaseUrl -User "postgres.$supabaseProjectRef" -Password $supabasePassword -HostName "aws-0-$supabaseRegion.pooler.supabase.com" -Port "6543" -Database $supabaseDbName -SslEnabled $true
+    } else {
+      $databaseUrl = Build-DatabaseUrl -User "postgres" -Password $supabasePassword -HostName "db.$supabaseProjectRef.supabase.co" -Port "5432" -Database $supabaseDbName -SslEnabled $true
+    }
+  } else {
+    $databaseUrl = "postgresql://{0}:{1}@localhost:{2}/{3}" -f $postgresUser, $postgresPassword, $postgresPort, $postgresDb
+  }
+
+  foreach ($key in @(
+    "DATABASE_READ_URL",
+    "DATABASE_HOST",
+    "DATABASE_PORT",
+    "DATABASE_NAME",
+    "DATABASE_USER",
+    "DATABASE_PASSWORD",
+    "DATABASE_SSL",
+    "DB_SSL_REJECT_UNAUTHORIZED",
+    "SUPABASE_PROJECT_REF",
+    "SUPABASE_DB_PASSWORD",
+    "SUPABASE_REGION",
+    "SUPABASE_USE_POOLER",
+    "SUPABASE_DB_NAME"
+  )) {
+    $value = Get-EnvValue -Path $RootEnv -Key $key -Default "__missing__"
+    if ($value -ne "__missing__") {
+      Set-EnvValue -Path $BackendEnv -Key $key -Value $value
+    }
+  }
+
   Set-EnvValue -Path $BackendEnv -Key "DATABASE_URL" -Value $databaseUrl
   return $databaseUrl
 }
@@ -238,7 +316,7 @@ Ensure-EnvFile -Path $FrontendEnv -ExamplePath (Join-Path $FrontendDir ".env.exa
 $postgresPort = Get-EnvValue -Path $RootEnv -Key "POSTGRES_PORT" -Default "5432"
 $backendPort = [int](Get-EnvValue -Path $BackendEnv -Key "PORT" -Default "3000")
 $frontendPort = 5173
-$databaseUrl = Sync-BackendDatabaseUrl
+$databaseUrl = Sync-BackendDatabaseConfig
 $dbReachable = Test-TcpPort -HostName "127.0.0.1" -Port ([int]$postgresPort)
 
 if (-not $SkipDocker) {

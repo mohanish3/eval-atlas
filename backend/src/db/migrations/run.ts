@@ -1,8 +1,10 @@
 import { getPool } from '../connection.js';
 import * as migration009 from './009_create_eval_tables.js';
+import * as migration010 from './010_create_authored_eval_sets.js';
 
 const migrations = [
   { name: '009_create_eval_tables', ...migration009 },
+  { name: '010_create_authored_eval_sets', ...migration010 },
 ];
 
 async function ensureMigrationsTable(): Promise<void> {
