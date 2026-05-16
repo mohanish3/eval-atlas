@@ -277,3 +277,90 @@ export const evalService = {
     return res.data;
   },
 };
+
+// ─── Research Service ─────────────────────────────────────────────────────────
+
+export type ResearchRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped';
+export type TrialStatus = 'keep' | 'discard' | 'crash';
+
+export interface PromptResearchRun {
+  id: string;
+  name: string;
+  eval_run_id: string | null;
+  source_eval_set_id: string | null;
+  base_prompt: string;
+  best_prompt: string | null;
+  research_spec: string;
+  research_model_provider: string;
+  research_model_id: string;
+  target_models_config: ModelSpec[];
+  optimization_metric: string;
+  status: ResearchRunStatus;
+  storage_mode: string;
+  max_iterations: number;
+  candidate_count_per_iteration: number;
+  holdout_enabled: boolean;
+  early_stop_k: number;
+  max_token_budget: number | null;
+  baseline_accuracy: number | null;
+  best_accuracy: number | null;
+  promoted_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PromptResearchTrial {
+  id: string;
+  research_run_id: string;
+  iteration: number;
+  candidate_prompt: string;
+  mutation_summary: string | null;
+  status: TrialStatus;
+  overall_accuracy: number | null;
+  latency_ms_avg: number | null;
+  tokens_used_total: number | null;
+  runtime_error_count: number | null;
+  target_run_snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PromptResearchRunDetail extends PromptResearchRun {
+  trials: PromptResearchTrial[];
+}
+
+export const researchService = {
+  create: async (params: {
+    name: string;
+    evalSetId?: string;
+    evalItems?: AuthoredEvalItem[];
+    basePrompt: string;
+    targetModel: ModelSpec;
+    researchModel: ModelSpec;
+    maxIterations: number;
+    candidateCountPerIteration: number;
+    holdoutEnabled: boolean;
+    earlyStopK: number;
+    maxTokens: number;
+    maxTokenBudget?: number;
+    researchSpec?: string;
+    consentAcknowledged: boolean;
+  }): Promise<{ researchRunId: string; status: string; storageMode: string; maxTokenBudget: number | null }> => {
+    const res = await apiClient.instance.post('/api/evals/prompt-research', params);
+    return res.data;
+  },
+
+  list: async (): Promise<PromptResearchRun[]> => {
+    const res = await apiClient.instance.get('/api/evals/prompt-research');
+    return res.data;
+  },
+
+  get: async (id: string): Promise<PromptResearchRunDetail> => {
+    const res = await apiClient.instance.get(`/api/evals/prompt-research/${id}`);
+    return res.data;
+  },
+
+  promote: async (id: string): Promise<{ promoted: boolean; bestPrompt: string | null }> => {
+    const res = await apiClient.instance.post(`/api/evals/prompt-research/${id}/promote`);
+    return res.data;
+  },
+};

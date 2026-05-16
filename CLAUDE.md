@@ -56,6 +56,10 @@ cd frontend && npm run dev
 
 `AGENTS.md` is canonical. If this file conflicts, update both and keep `AGENTS.md` source-of-truth.
 
+## Docs
+
+- `docs/autoresearch-evals-prd.md` covers Karpathy-style auto research for prompt optimization on eval runs.
+
 ## DB Env Notes
 
 - Backend can read `DATABASE_URL`, granular `DATABASE_*` fields, or `SUPABASE_*` fields to build Postgres connection config.

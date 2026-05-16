@@ -1,181 +1,175 @@
-import { Check, Cloud, Cpu, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { X } from 'lucide-react';
 import type { AvailableModels, ModelSpec } from '../../services/api';
 import { cn } from '../../lib/utils';
 
-const PROVIDER_META: Record<string, { icon: typeof Cloud; accent: string; dot: string }> = {
-  openai: { icon: Cloud, accent: 'text-emerald-300', dot: 'bg-emerald-400' },
-  anthropic: { icon: Cloud, accent: 'text-orange-300', dot: 'bg-orange-400' },
-  gemini: { icon: Cloud, accent: 'text-blue-300', dot: 'bg-blue-400' },
-  groq: { icon: Zap, accent: 'text-fuchsia-300', dot: 'bg-fuchsia-400' },
-  mistral: { icon: Cloud, accent: 'text-amber-300', dot: 'bg-amber-400' },
-  cohere: { icon: Cloud, accent: 'text-teal-300', dot: 'bg-teal-400' },
-  togetherai: { icon: Cloud, accent: 'text-pink-300', dot: 'bg-pink-400' },
-  local: { icon: Cpu, accent: 'text-slate-200', dot: 'bg-slate-300' },
-  ollama: { icon: Cpu, accent: 'text-indigo-300', dot: 'bg-indigo-400' },
-  mock: { icon: Cloud, accent: 'text-zinc-300', dot: 'bg-zinc-400' },
+const PROVIDER_ACCENT: Record<string, string> = {
+  openai: 'text-emerald-300',
+  anthropic: 'text-orange-300',
+  gemini: 'text-blue-300',
+  groq: 'text-fuchsia-300',
+  mistral: 'text-amber-300',
+  cohere: 'text-teal-300',
+  togetherai: 'text-pink-300',
+  local: 'text-slate-200',
+  ollama: 'text-indigo-300',
+  mock: 'text-zinc-300',
 };
 
-function ProviderCard({
-  provider,
-  selected,
-  disabled,
-  modelId,
-  models,
-  onToggle,
-  onChange,
-}: {
-  provider: string;
-  selected: boolean;
-  disabled?: boolean;
-  modelId: string;
+interface ProviderEntry {
+  id: string;
   models: string[];
-  onToggle: () => void;
-  onChange: (next: string) => void;
-}) {
-  const meta = PROVIDER_META[provider] ?? PROVIDER_META.mock;
-  const Icon = meta.icon;
+  configured: boolean;
+}
 
-  return (
-    <div
-      className={cn(
-        'rounded-2xl border p-3 transition-all',
-        selected ? 'border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_0_1px_rgba(103,232,249,0.12)]' : 'border-white/10 bg-white/[0.03]',
-        disabled && 'opacity-45',
-      )}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        disabled={disabled}
-        className="flex w-full items-center gap-2 text-left disabled:cursor-not-allowed"
-      >
-        <Icon className={cn('h-4 w-4', meta.accent)} />
-        <span className={cn('flex-1 font-medium capitalize', meta.accent)}>{provider}</span>
-        {disabled && <span className="rounded-full bg-white/8 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">no key</span>}
-        {selected && (
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-300 text-slate-950">
-            <Check className="h-3 w-3" />
-          </span>
-        )}
-      </button>
-      <select
-        value={modelId}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-3 h-9 w-full rounded-xl border border-white/10 bg-slate-950/90 px-3 text-xs text-slate-100 outline-none"
-      >
-        {models.map((model) => (
-          <option key={model} value={model}>
-            {model}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+function buildProviders(availableModels: AvailableModels): ProviderEntry[] {
+  const entries: ProviderEntry[] = availableModels.apiProviders.map((p) => ({
+    id: p.provider,
+    models: p.models.length > 0 ? p.models : [p.defaultModel],
+    configured: p.configured,
+  }));
+  if (availableModels.ollamaModels.length > 0) {
+    entries.push({ id: 'ollama', models: availableModels.ollamaModels.map((m) => m.id), configured: true });
+  }
+  if (availableModels.localModels.length > 0) {
+    entries.push({ id: 'local', models: availableModels.localModels.map((m) => m.id), configured: true });
+  }
+  return entries;
 }
 
 export function ModelSelector({
   availableModels,
   selectedModels,
   onChange,
+  singleSelect = false,
 }: {
   availableModels: AvailableModels;
   selectedModels: ModelSpec[];
   onChange: (models: ModelSpec[]) => void;
+  singleSelect?: boolean;
 }) {
-  const perProviderModel = Object.fromEntries(selectedModels.map((model) => [model.provider, model.modelId]));
+  const providers = buildProviders(availableModels);
 
-  function toggleProvider(provider: string, modelId: string) {
-    const exists = selectedModels.some((entry) => entry.provider === provider && entry.modelId === modelId);
-    if (exists) {
-      onChange(selectedModels.filter((entry) => !(entry.provider === provider && entry.modelId === modelId)));
-      return;
+  const initProvider =
+    singleSelect && selectedModels.length > 0
+      ? selectedModels[0].provider
+      : providers[0]?.id ?? '';
+
+  const initProviderEntry = providers.find((p) => p.id === initProvider);
+  const initModel =
+    singleSelect && selectedModels.length > 0 && selectedModels[0].provider === initProvider
+      ? selectedModels[0].modelId
+      : initProviderEntry?.models[0] ?? '';
+
+  const [activeProvider, setActiveProvider] = useState(initProvider);
+  const [activeModel, setActiveModel] = useState(initModel);
+
+  const currentEntry = providers.find((p) => p.id === activeProvider);
+  const isConfigured = currentEntry?.configured ?? false;
+
+  function handleProviderChange(provider: string) {
+    const entry = providers.find((p) => p.id === provider);
+    const firstModel = entry?.models[0] ?? '';
+    setActiveProvider(provider);
+    setActiveModel(firstModel);
+    if (singleSelect && entry?.configured && firstModel) {
+      onChange([{ provider, modelId: firstModel }]);
     }
-
-    if (provider !== 'local' && provider !== 'ollama') {
-      onChange([
-        ...selectedModels.filter((entry) => entry.provider !== provider),
-        { provider, modelId },
-      ]);
-      return;
-    }
-
-    onChange([...selectedModels, { provider, modelId }]);
   }
 
-  function changeProviderModel(provider: string, modelId: string) {
-    const existing = selectedModels.some((entry) => entry.provider === provider);
-    if (!existing) {
-      return;
+  function handleModelChange(modelId: string) {
+    setActiveModel(modelId);
+    if (singleSelect && isConfigured) {
+      onChange([{ provider: activeProvider, modelId }]);
     }
-    onChange(selectedModels.map((entry) => (entry.provider === provider ? { ...entry, modelId } : entry)));
+  }
+
+  function handleAdd() {
+    if (!activeProvider || !activeModel || !isConfigured) return;
+    const exists = selectedModels.some(
+      (m) => m.provider === activeProvider && m.modelId === activeModel
+    );
+    if (exists) return;
+    onChange([...selectedModels, { provider: activeProvider, modelId: activeModel }]);
+  }
+
+  function handleRemove(provider: string, modelId: string) {
+    onChange(selectedModels.filter((m) => !(m.provider === provider && m.modelId === modelId)));
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Cloud APIs</p>
-        <div className="grid gap-3">
-          {availableModels.apiProviders.map((provider) => {
-            const currentModel = perProviderModel[provider.provider] ?? provider.defaultModel;
-            const selected = selectedModels.some((entry) => entry.provider === provider.provider);
-            return (
-              <ProviderCard
-                key={provider.provider}
-                provider={provider.provider}
-                selected={selected}
-                disabled={!provider.configured}
-                modelId={currentModel}
-                models={provider.models ?? [provider.defaultModel]}
-                onToggle={() => toggleProvider(provider.provider, currentModel)}
-                onChange={(next) => changeProviderModel(provider.provider, next)}
-              />
-            );
-          })}
-        </div>
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <select
+          value={activeProvider}
+          onChange={(e) => handleProviderChange(e.target.value)}
+          className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/90 px-3 text-sm text-slate-100 outline-none"
+        >
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.id}{!p.configured ? ' (no key)' : ''}
+            </option>
+          ))}
+        </select>
+        <select
+          value={activeModel}
+          onChange={(e) => handleModelChange(e.target.value)}
+          disabled={!isConfigured}
+          className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/90 px-3 text-sm text-slate-100 outline-none disabled:opacity-50"
+        >
+          {currentEntry?.models.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        {!singleSelect && (
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={!isConfigured || !activeModel}
+            className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-slate-200 hover:bg-white/10 transition-colors disabled:opacity-40"
+          >
+            Add
+          </button>
+        )}
       </div>
 
-      {availableModels.ollamaModels.length > 0 && (
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Ollama</p>
-          <div className="grid gap-3">
-            {availableModels.ollamaModels.map((model) => {
-              const selected = selectedModels.some((entry) => entry.provider === 'ollama' && entry.modelId === model.id);
-              return (
-                <ProviderCard
-                  key={model.id}
-                  provider="ollama"
-                  selected={selected}
-                  modelId={model.id}
-                  models={[model.id]}
-                  onToggle={() => toggleProvider('ollama', model.id)}
-                  onChange={() => undefined}
-                />
-              );
-            })}
-          </div>
+      {!isConfigured && (
+        <p className="text-xs text-amber-300/80">No API key configured for {activeProvider}.</p>
+      )}
+
+      {singleSelect && selectedModels.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <span
+            className={cn(
+              'rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-xs font-medium',
+              PROVIDER_ACCENT[selectedModels[0].provider] ?? 'text-slate-200'
+            )}
+          >
+            {selectedModels[0].provider} / {selectedModels[0].modelId}
+          </span>
         </div>
       )}
 
-      {availableModels.localModels.length > 0 && (
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Local agent models</p>
-          <div className="grid gap-3">
-            {availableModels.localModels.map((model) => {
-              const selected = selectedModels.some((entry) => entry.provider === 'local' && entry.modelId === model.id);
-              return (
-                <ProviderCard
-                  key={model.id}
-                  provider="local"
-                  selected={selected}
-                  modelId={model.id}
-                  models={[model.id]}
-                  onToggle={() => toggleProvider('local', model.id)}
-                  onChange={() => undefined}
-                />
-              );
-            })}
-          </div>
+      {!singleSelect && selectedModels.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedModels.map((m) => (
+            <span
+              key={`${m.provider}/${m.modelId}`}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-xs font-medium',
+                PROVIDER_ACCENT[m.provider] ?? 'text-slate-200'
+              )}
+            >
+              {m.provider} / {m.modelId}
+              <button
+                type="button"
+                onClick={() => handleRemove(m.provider, m.modelId)}
+                className="ml-0.5 text-slate-400 hover:text-slate-100 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
