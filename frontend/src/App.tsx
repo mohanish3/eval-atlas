@@ -6,6 +6,7 @@ import EvalResults from './pages/EvalResults';
 import EvalSetBuilder from './pages/EvalSetBuilder';
 import EvalSetsPage from './pages/EvalSetsPage';
 import EvalConfigPage from './pages/EvalConfigPage';
+import EvalResearch from './pages/EvalResearch';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/evals/config" element={<EvalConfigPage />} />
           <Route path="/evals/builder/new" element={<EvalSetBuilder />} />
           <Route path="/evals/builder/:evalSetId" element={<EvalSetBuilder />} />
+          <Route path="/evals/research/:id" element={<EvalResearch />} />
           <Route path="/evals/:id" element={<EvalResults />} />
         </Routes>
       </Layout>
