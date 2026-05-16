@@ -35,6 +35,7 @@ Important files:
 - `frontend/src/pages/EvalConfigPage.tsx` DB config page
 - `frontend/src/pages/EvalSetBuilder.tsx` spreadsheet-style builder
 - `frontend/src/pages/EvalResults.tsx` run results
+- `docs/autoresearch-evals-prd.md` product requirements for Karpathy-style prompt research on eval runs
 
 ## Commands
 

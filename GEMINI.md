@@ -35,6 +35,7 @@ cd frontend && npm test
 - Realtime results: SSE from `/api/evals/runs/:id/stream`
 - Authored eval sets persisted in `eval_sets` / `eval_set_items` or memory fallback
 - Saved eval sets export to CSV in frontend
+- `docs/autoresearch-evals-prd.md` defines Karpathy-style prompt auto research for eval runs
 
 ## Current Pages
 

@@ -131,7 +131,7 @@ export default function EvalResults() {
               <div>
                 <p className="font-semibold text-slate-100">
                   {runtimeStatus.storageMode === 'memory'
-                    ? 'No cached fallback run found in the current UI session.'
+                    ? 'No cached local run found in the current UI session.'
                     : 'Run not found.'}
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
@@ -155,7 +155,7 @@ export default function EvalResults() {
   }
 
   const totalQuestions = (activeRun.eval_set_data as unknown[]).length;
-  const storageLabel = activeRun.storage_mode === 'memory' ? 'memory fallback' : 'database-backed';
+  const storageLabel = activeRun.storage_mode === 'memory' ? 'local memory' : 'database-backed';
 
   return (
     <div className="h-full overflow-y-auto">
@@ -226,7 +226,7 @@ export default function EvalResults() {
 
           {activeRun.storage_mode === 'memory' && (
             <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-              This run is in fallback memory mode. It survives only while the current server session stays alive.
+              This run is in local memory mode. It survives only while the current server session stays alive.
             </div>
           )}
         </section>

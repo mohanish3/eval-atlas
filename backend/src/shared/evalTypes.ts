@@ -134,3 +134,55 @@ export interface AvailableModels {
   ollamaModels: Array<{ id: string; name: string; source: 'ollama' }>;
   apiProviders: Array<{ provider: ModelProvider; configured: boolean; defaultModel: string }>;
 }
+
+// ─── Prompt Research Types ──────────────────────────────────────────────────
+
+export type ResearchRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped';
+export type TrialStatus = 'keep' | 'discard' | 'crash';
+
+export interface PromptResearchRun {
+  id: string;
+  name: string;
+  eval_run_id: string | null;
+  source_eval_set_id: string | null;
+  eval_set_data: EvalItem[];
+  base_prompt: string;
+  best_prompt: string | null;
+  research_spec: string;
+  research_model_provider: string;
+  research_model_id: string;
+  target_models_config: ModelSpec[];
+  optimization_metric: string;
+  status: ResearchRunStatus;
+  storage_mode: StorageMode;
+  max_iterations: number;
+  candidate_count_per_iteration: number;
+  sample_size: number | null;
+  holdout_enabled: boolean;
+  early_stop_k: number;
+  max_token_budget: number | null;
+  baseline_accuracy: number | null;
+  best_accuracy: number | null;
+  promoted_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PromptResearchTrial {
+  id: string;
+  research_run_id: string;
+  iteration: number;
+  candidate_prompt: string;
+  mutation_summary: string | null;
+  status: TrialStatus;
+  overall_accuracy: number | null;
+  latency_ms_avg: number | null;
+  tokens_used_total: number | null;
+  runtime_error_count: number | null;
+  target_run_snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PromptResearchRunDetail extends PromptResearchRun {
+  trials: PromptResearchTrial[];
+}

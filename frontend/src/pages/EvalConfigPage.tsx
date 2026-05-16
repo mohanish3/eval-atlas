@@ -67,7 +67,7 @@ DATABASE_SSL=true`,
 
 export default function EvalConfigPage() {
   const { runtimeStatus } = useEvalStore();
-  const fallbackMode = runtimeStatus.storageMode === 'memory';
+  const localMode = runtimeStatus.storageMode === 'memory';
   const databaseConfig = runtimeStatus.databaseConfig;
 
   return (
@@ -86,16 +86,16 @@ export default function EvalConfigPage() {
                 </p>
               </div>
               <Badge className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-200">
-                {fallbackMode ? 'Memory fallback active' : 'Database persistence active'}
+                {localMode ? 'Local memory active' : 'Database persistence active'}
               </Badge>
             </div>
 
             <div className="mt-8 grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
                 <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Runtime mode</p>
-                <p className="mt-3 text-lg font-semibold text-slate-100">{fallbackMode ? 'Memory fallback' : 'Persistent database'}</p>
+                <p className="mt-3 text-lg font-semibold text-slate-100">{localMode ? 'Local memory' : 'Persistent database'}</p>
                 <p className="mt-1 text-sm text-slate-400">
-                  {fallbackMode ? 'Runs and sets last for current server session only.' : 'Runs and authored sets persist in Postgres.'}
+                  {localMode ? 'Runs and sets last for current server session only.' : 'Runs and authored sets persist in Postgres.'}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
