@@ -22,13 +22,13 @@ Upload a JSON or JSONL eval set, pick a provider, run it, and see pass/fail per 
 }
 ```
 
-Full format reference: [docs/eval-format.md](docs/eval-format.md). Sample 20-question set: [docs/sample-eval-set.json](docs/sample-eval-set.json) — upload it directly from the New Run form to try the dashboard without writing your own set first.
+Full format reference: [docs/eval-format.md](docs/eval-format.md). Sample 20-question set: [docs/sample-eval-set.json](docs/sample-eval-set.json). Upload it directly from the New Run form to try the dashboard without writing your own set first.
 
 ## Stack
 
-- `backend/` — Express + TypeScript API, SSE streaming, Postgres persistence
-- `frontend/` — React + Vite dashboard
-- `docker-compose.yml` — local Postgres 16
+- `backend/`: Express + TypeScript API, SSE streaming, Postgres persistence
+- `frontend/`: React + Vite dashboard
+- `docker-compose.yml`: local Postgres 16
 
 ## Requirements
 
@@ -65,14 +65,14 @@ POSTGRES_PORT=5432
 
 `backend/.env` accepts a direct `DATABASE_URL`, discrete `DATABASE_HOST`/`PORT`/`NAME`/`USER`/`PASSWORD`, or Supabase connection fields (`SUPABASE_PROJECT_REF` + `SUPABASE_DB_PASSWORD`, optional `SUPABASE_REGION`/`SUPABASE_USE_POOLER`), checked in that precedence order. Optional read replica via `DATABASE_READ_URL`.
 
-Model provider keys (all optional — without any set, local smoke tests run against a mock provider): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`, `TOGETHER_API_KEY`.
+Model provider keys (all optional; without any set, local smoke tests run against a mock provider): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`, `TOGETHER_API_KEY`.
 
 ## Security defaults
 
 - `.env` files are git-ignored; only `.env.example` templates are tracked.
 - Key/cert files ignored: `*.pem`, `*.key`, `*.crt`, `*.p12`.
 - Rate limiting enabled on the backend.
-- CORS restricted to configured origins — defaults to local Vite origins only.
+- CORS restricted to configured origins, defaulting to local Vite origins only.
 - If `API_TOKEN` is set, all `/api` routes including the SSE stream require it.
 - Upload size capped by `MAX_EVAL_FILE_BYTES`.
 
