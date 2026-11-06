@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Database, FileText, FlaskConical, Radio, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronDown, Database, Download, FileText, FlaskConical, Radio, RefreshCw } from 'lucide-react';
 import { useEvalStore } from '../store/useEvalStore';
 import { evalService } from '../services/api';
 import { useEvalStream } from '../hooks/useEvalStream';
@@ -42,6 +42,8 @@ export default function EvalResults() {
   } = useEvalStore();
   const [drilldownModelId, setDrilldownModelId] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [exporting, setExporting] = useState<'csv' | 'json' | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   const isLive = activeRun?.status === 'running' || activeRun?.status === 'pending';
   useEvalStream(isLive && runId ? runId : null);
@@ -106,6 +108,30 @@ export default function EvalResults() {
     } catch (error: any) {
       setError(error.message ?? 'Failed to retry errors');
       setRetrying(false);
+    }
+  }
+
+  async function handleExport(format: 'csv' | 'json') {
+    if (!runId || exporting) {
+      return;
+    }
+
+    setExportMenuOpen(false);
+    setExporting(format);
+    try {
+      const { blob, filename } = await evalService.exportRun(runId, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      setError(error.message ?? 'Failed to export results');
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -189,16 +215,50 @@ export default function EvalResults() {
               </p>
             </div>
 
-            {!isLive && runtimeErrorCount > 0 && (
-              <button
-                onClick={handleRetryErrors}
-                disabled={retrying}
-                className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-300/15 disabled:opacity-50"
-              >
-                <RefreshCw className={cn('h-3.5 w-3.5', retrying && 'animate-spin')} />
-                Retry {runtimeErrorCount} runtime error{runtimeErrorCount !== 1 ? 's' : ''}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isLive && runtimeErrorCount > 0 && (
+                <button
+                  onClick={handleRetryErrors}
+                  disabled={retrying}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-300/15 disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', retrying && 'animate-spin')} />
+                  Retry {runtimeErrorCount} runtime error{runtimeErrorCount !== 1 ? 's' : ''}
+                </button>
+              )}
+
+              <div className="relative">
+                <button
+                  onClick={() => setExportMenuOpen((open) => !open)}
+                  disabled={exporting !== null}
+                  className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-300/10 px-4 py-2 text-xs font-semibold text-cyan-100 transition-colors hover:bg-cyan-300/15 disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export
+                  <ChevronDown className={cn('h-3 w-3 transition-transform', exportMenuOpen && 'rotate-180')} />
+                </button>
+                {exportMenuOpen && (
+                  <div className="absolute right-0 z-10 mt-1 w-36 overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-lg">
+                    <button
+                      onClick={() => handleExport('csv')}
+                      disabled={exporting !== null}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download CSV
+                    </button>
+                    <button
+                      onClick={() => handleExport('json')}
+                      disabled={exporting !== null}
+                      className="flex w-full items-center gap-2 border-t border-white/10 px-4 py-2 text-left text-xs font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download JSON
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">

@@ -93,6 +93,17 @@ npm run build
 npm audit --omit=dev
 ```
 
+## Exporting run results
+
+From the results page, use the **Export** button in the header to download the results of a run:
+
+- **CSV** — one row per model + question: run name, model, question id, category, question, expected answer, model output, pass/fail, error type, latency (ms), tokens used. Cells containing quotes, commas, or newlines are escaped per RFC 4180.
+- **JSON** — the full run detail payload (`{ run, results }`), identical to what the dashboard renders.
+
+Both formats work for memory-mode and database-backed runs. The download uses the run name for the filename (e.g. `my-benchmark.csv`).
+
+API: `GET /api/evals/runs/:id/export?format=csv|json` returns an attachment with `Content-Disposition`.
+
 ## Notes
 
 - The backend needs a working Postgres connection before API routes function fully.
