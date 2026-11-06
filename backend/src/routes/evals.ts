@@ -26,6 +26,7 @@ import {
 import type {
   AuthoredEvalItem,
   EvalItem,
+  EvalResult,
   EvalRun,
   EvalRunSummary,
   EvalSet,
@@ -896,6 +897,142 @@ router.get('/runs/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('[routes/evals] GET /runs/:id error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Run results export (CSV / JSON download) ───────────────────────────────
+
+// RFC 4180 escaping: always wrap the cell in double quotes and double any
+// embedded quotes. Mirrors the frontend `escapeCell` helper in
+// frontend/src/services/api.ts so CSV output is byte-compatible with what
+// the dashboard already produces for eval-set exports.
+function escapeCsvCell(value: unknown): string {
+  const text = typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function sanitizeFilenamePart(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'run'
+  );
+}
+
+// A control-flow error that carries an HTTP status + message, so the shared
+// loader can express 404 / 503 without the route needing to re-query.
+class ExportResponseError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'ExportResponseError';
+  }
+}
+
+// Shared data loader for the export route. Returns the same { run, results }
+// shape the dashboard's GET /runs/:id handler produces: memory store first,
+// then Postgres via the read pool.
+async function loadRunForExport(runId: string): Promise<{ run: EvalRun; results: EvalResult[] }> {
+  const memoryRun = getMemoryRunDetail(runId);
+  if (memoryRun) {
+    return { run: memoryRun.run, results: memoryRun.results };
+  }
+
+  const dbState = await checkDatabaseConnection();
+  if (!dbState.connected) {
+    // No DB and no memory cache means the run is not available to us.
+    // Return 404 (not found) rather than 503: from the caller's perspective
+    // the specific run they asked for does not exist in this deployment.
+    throw new ExportResponseError(404, 'Run not found');
+  }
+
+  const readPool = getReadPool();
+  const runResult = await readPool.query<EvalRun>('SELECT * FROM eval_runs WHERE id = $1', [runId]);
+  if (runResult.rows.length === 0) {
+    throw new ExportResponseError(404, 'Run not found');
+  }
+
+  const resultsResult = await readPool.query(
+    'SELECT * FROM eval_results WHERE run_id = $1 ORDER BY created_at',
+    [runId]
+  );
+
+  return {
+    run: { ...runResult.rows[0], storage_mode: 'database' as StorageMode },
+    results: resultsResult.rows as EvalResult[],
+  };
+}
+
+router.get('/runs/:id/export', async (req, res) => {
+  try {
+    const { format = 'csv' } = req.query;
+    const normalizedFormat = String(format).toLowerCase();
+
+    if (normalizedFormat !== 'csv' && normalizedFormat !== 'json') {
+      return res.status(400).json({ error: "Invalid format. Use 'csv' or 'json'." });
+    }
+
+    let detail: { run: EvalRun; results: EvalResult[] };
+    try {
+      detail = await loadRunForExport(req.params.id);
+    } catch (err) {
+      if (err instanceof ExportResponseError) {
+        return res.status(err.status).json({ error: err.message });
+      }
+      throw err;
+    }
+
+    const { run, results } = detail;
+    const baseName = sanitizeFilenamePart(run.name);
+
+    if (normalizedFormat === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${baseName}.json"`);
+      return res.json({ run, results });
+    }
+
+    // CSV: one row per model+question result.
+    const questionMap = new Map<string, string>(
+      (run.eval_set_data ?? []).map((item) => [item.id, item.question])
+    );
+    const headers = [
+      'run_name',
+      'model',
+      'question_id',
+      'category',
+      'question',
+      'expected',
+      'model_output',
+      'result',
+      'error_type',
+      'latency_ms',
+      'tokens_used',
+    ];
+    const rows = results.map((r) => [
+      run.name,
+      r.model_id,
+      r.question_id,
+      r.category ?? '',
+      questionMap.get(r.question_id) ?? '',
+      r.correct_answer ?? '',
+      r.model_output ?? '',
+      r.is_correct ? 'pass' : 'fail',
+      r.error_type ?? '',
+      r.latency_ms ?? '',
+      r.tokens_used ?? '',
+    ]);
+
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(',')).join('\n') + '\n';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${baseName}.csv"`);
+    return res.send(csv);
+  } catch (error) {
+    console.error('[routes/evals] GET /runs/:id/export error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
