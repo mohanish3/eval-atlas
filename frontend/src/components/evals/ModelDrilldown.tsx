@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { useEvalStore } from '../../store/useEvalStore';
 import type { EvalResult } from '../../store/useEvalStore';
 import { cn } from '../../lib/utils';
+import { estimateCost, formatCost } from '../../lib/modelPricing';
 
 type SortField = 'category' | 'is_correct' | 'latency_ms';
 
@@ -105,6 +106,7 @@ export function ModelDrilldown({ runId, modelId, onClose }: ModelDrilldownProps)
                 >
                   <span className="flex items-center gap-1">Latency <SortIcon field="latency_ms" /></span>
                 </th>
+                <th className="text-left p-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">Est. Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -149,11 +151,14 @@ export function ModelDrilldown({ runId, modelId, onClose }: ModelDrilldownProps)
                   <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">
                     {r.latency_ms != null ? `${r.latency_ms}ms` : '—'}
                   </td>
+                  <td className="p-3 text-xs text-muted-foreground whitespace-nowrap" title="Estimated from tokens used at the model's blended list rate">
+                    {formatCost(estimateCost(r.tokens_used, modelId))}
+                  </td>
                 </tr>
               ))}
               {modelResults.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">No results yet</td>
+                  <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">No results yet</td>
                 </tr>
               )}
             </tbody>
