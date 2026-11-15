@@ -10,6 +10,7 @@ import {
 import { useEvalStore } from '../../store/useEvalStore';
 import type { EvalResult } from '../../store/useEvalStore';
 import { cn } from '../../lib/utils';
+import { getModelPrice, blendedRatePerToken, formatCost } from '../../lib/modelPricing';
 
 interface ComparisonTableProps {
   runId: string;
@@ -66,6 +67,23 @@ function computeMetrics(
     if (total > 0 && total < bestTok) { bestTok = total; tokRow.bestModelId = modelId; }
   }
   rows.push(tokRow);
+
+  // Estimated cost (cheapest highlighted)
+  const costRow: MetricRow = { metric: 'Estimated Cost (USD)', values: {}, bestModelId: null, higherIsBetter: false };
+  let bestCost = Infinity;
+  for (const modelId of modelIds) {
+    const price = getModelPrice(modelId);
+    if (!price) {
+      costRow.values[modelId] = '—';
+      continue;
+    }
+    const totalTokens = results.filter((r) => r.model_id === modelId && r.tokens_used != null)
+      .reduce((sum, r) => sum + r.tokens_used!, 0);
+    const cost = totalTokens * blendedRatePerToken(price);
+    costRow.values[modelId] = formatCost(cost);
+    if (cost > 0 && cost < bestCost) { bestCost = cost; costRow.bestModelId = modelId; }
+  }
+  rows.push(costRow);
 
   // Per-category accuracy rows (only if category data present)
   const categories = [...new Set(results.map((r) => r.category).filter(Boolean))] as string[];
