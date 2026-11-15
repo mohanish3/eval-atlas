@@ -93,6 +93,12 @@ npm run build
 npm audit --omit=dev
 ```
 
+## Cost estimation
+
+The dashboard shows an "Estimated Cost (USD)" row in the comparison table and a per-question cost column in the model drilldown. Prices come from a curated table (`backend/src/evals/cost.ts` and `frontend/src/lib/modelPricing.ts`) listing per-1M-token input and output rates for each model.
+
+Because the backend tracks a single `tokens_used` figure per result (no input/output split), the estimate applies a **blended rate**: the average of the two per-1M rates. Models not in the table display a dash. All figures are estimates from public list prices; update the table files when provider pricing changes.
+
 ## Notes
 
 - The backend needs a working Postgres connection before API routes function fully.
