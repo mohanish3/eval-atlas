@@ -130,6 +130,33 @@ export const evalService = {
     return res.data;
   },
 
+  /**
+   * Export a run's results as a downloadable file.
+   * `format` is 'csv' (one row per model+question) or 'json' (full payload).
+   * Returns the file bytes as a Blob and a suggested filename, so the UI can
+   * trigger a browser download without re-parsing the run detail.
+   */
+  exportRun: async (runId: string, format: 'csv' | 'json' = 'csv'): Promise<{ blob: Blob; filename: string }> => {
+    const res = await apiClient.instance.get(`/api/evals/runs/${runId}/export`, {
+      params: { format },
+      responseType: 'blob',
+    });
+
+    const disposition = res.headers['content-disposition'] as string | undefined;
+    let filename = `run-${runId}.${format}`;
+    const match = /filename="?([^";]+)"?/i.exec(disposition ?? '');
+    if (match && match[1]) {
+      filename = match[1];
+    }
+
+    return {
+      blob: new Blob([res.data as BlobPart], {
+        type: format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json',
+      }),
+      filename,
+    };
+  },
+
   /** Create a new eval run. Returns { runId, status } */
   createRun: async (params: {
     name: string;
