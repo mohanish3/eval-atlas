@@ -203,7 +203,8 @@ ${tagExamples}`;
   };
 }
 
-function splitEvalSet(items: EvalItem[]): { search: EvalItem[]; holdout: EvalItem[] } {
+export function splitEvalSet(items: EvalItem[]): { search: EvalItem[]; holdout: EvalItem[] } {
+  if (items.length <= 1) return { search: items, holdout: [] };
   const holdoutCount = Math.max(1, Math.round(items.length * 0.2));
   return {
     search: items.slice(0, items.length - holdoutCount),
